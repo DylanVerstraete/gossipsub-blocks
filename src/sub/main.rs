@@ -18,37 +18,27 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("../../README.md")]
 
 use futures::stream::StreamExt;
 use libp2p::{
     gossipsub, identity::Keypair, mdns, noise, swarm::NetworkBehaviour, swarm::SwarmEvent, tcp,
     yamux,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tokio::{io, select};
 use tracing_subscriber::EnvFilter;
-use web3::types::H256;
-use web3::Web3;
+
+use common::attestation::Attestation;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
     gossipsub: gossipsub::Behaviour,
     mdns: mdns::tokio::Behaviour,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Message<H>
-where
-    H: Serialize,
-{
-    pub block_hash: H256,
-    pub signature: H,
 }
 
 #[tokio::main]
@@ -59,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let key = Keypair::generate_ed25519();
 
-    let mut swarm = libp2p::SwarmBuilder::with_new_identity()
+    let mut swarm = libp2p::SwarmBuilder::with_existing_identity(key.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default(),
@@ -105,49 +95,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    // Replace this URL with your local Ethereum node's JSON-RPC URL
-    let ws = web3::transports::WebSocket::new("ws://localhost:8545").await?;
-    let web3 = Web3::new(ws);
-
-    // Subscribe to new block headers
-    let mut subscription = web3.eth_subscribe().subscribe_new_heads().await.unwrap();
-
-    println!("Listening for new block headers...");
-
     // Kick it off
     loop {
         select! {
-            header = subscription.next() => match header {
-                Some(Ok(header)) => {
-                    println!("New block header: {:?}", header.hash);
-                    let block_hash = header.hash.unwrap();
-
-                    // let block: Option<Block<_>> = web3
-                    //     .eth()
-                    //     .block_with_txs(BlockId::Hash(block_hash))
-                    //     .await
-                    //     .unwrap();
-
-                    let message = Message {
-                        block_hash: block_hash,
-                        signature: key.sign(&block_hash.to_fixed_bytes()).unwrap()
-                    };
-                    let encoded: Vec<u8> = bincode::serialize(&message).unwrap();
-
-
-                    if let Err(e) = swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .publish(topic.clone(), encoded)
-                    {
-                        println!("Publish error: {e:?}");
-                    }
-                }
-                Some(Err(e)) => {
-                    eprintln!("{:?}", e);
-                }
-                None => panic!("no block"),
-            },
             event = swarm.select_next_some() => match event {
                 SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                     for (peer_id, _multiaddr) in list {
@@ -166,9 +116,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     message_id: id,
                     message,
                 })) => {
-                    let decoded: Message<Vec<u8>> = bincode::deserialize(&message.data).unwrap();
+                    let decoded: Attestation<Vec<u8>> = bincode::deserialize(&message.data).unwrap();
                     println!(
-                        "Got BLOCK message: '{:?}' with id: {id} from peer: {peer_id}",
+                        "Got BLOCK attestation: '{:?}' with id: {id} from peer: {peer_id}",
                         decoded)},
                 SwarmEvent::NewListenAddr { address, .. } => {
                     println!("Local node is listening on {address}");

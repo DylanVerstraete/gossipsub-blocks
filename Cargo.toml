@@ -5,6 +5,18 @@ edition = "2021"
 publish = false
 license = "MIT"
 
+[[bin]]
+name = "pub"
+path = "src/pub/main.rs"
+
+[[bin]]
+name = "sub"
+path = "src/sub/main.rs"
+
+[lib]
+name = "common"
+path = "src/common/mod.rs"
+
 [package.metadata.release]
 release = false
 

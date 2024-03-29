@@ -11,14 +11,20 @@ cd node
 npx hardhat node
 ```
 
-### Open terminal pane 1
+### Open terminal pane 1 (publisher)
 
 ```sh
-cargo run
+cargo run --bin pub
 ```
 
-### Open terminal pane 2
+### Open terminal pane 2 (publisher)
 
 ```sh
-cargo run
+cargo run -- bin pub
+```
+
+### Open terminal pane 3 (subscriber)
+
+```sh
+cargo run --bin sub
 ```
